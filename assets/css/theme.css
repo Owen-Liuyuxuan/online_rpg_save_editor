@@ -1,0 +1,17 @@
+:root {
+  --bg: #0f1219;
+  --surface: #181d28;
+  --surface-elevated: #212836;
+  --border: #2f3648;
+  --text: #e8eaf0;
+  --text-muted: #9aa3b8;
+  --accent: #6ea8fe;
+  --accent-hover: #8bb8ff;
+  --danger: #f06565;
+  --success: #4fd19b;
+  --warning: #e6b547;
+  --shadow: rgba(0, 0, 0, 0.35);
+  --radius: 8px;
+  --font-ui: ui-sans-serif, system-ui, "Segoe UI", Roboto, "Noto Sans", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}

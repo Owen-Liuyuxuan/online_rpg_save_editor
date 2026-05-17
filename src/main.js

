@@ -1,0 +1,251 @@
+import { SaveStore } from "./store/SaveStore.js";
+import { DatabaseStore } from "./store/DatabaseStore.js";
+import { ConfigStore } from "./store/ConfigStore.js";
+import { ingestFile } from "./ingest/FileIngestor.js";
+import { summarizeDecodedSave } from "./ingest/SaveFileParser.js";
+import { wireDropZone } from "./ui/FileDropZone.js";
+import { NotificationBus } from "./ui/Notification.js";
+import { confirmDanger } from "./ui/ModalDialog.js";
+import { exportSingle, exportAllDirty, exportCompressed } from "./export/SaveExporter.js";
+import { zipDirtySaves } from "./export/BatchExporter.js";
+import { renderEditorTab } from "./editor/panels.js";
+
+const saveStore = new SaveStore();
+const dbStore = new DatabaseStore();
+const cfg = new ConfigStore();
+const notify = new NotificationBus();
+
+/** @type {string} */
+let activeTab = "party";
+
+function requireEl(sel) {
+  const el = document.querySelector(sel);
+  if (!(el instanceof HTMLElement)) throw new Error(`Missing ${sel}`);
+  return el;
+}
+
+function currentEntry() {
+  const name = cfg.getActiveFilename();
+  if (!name) return null;
+  return saveStore.get(name);
+}
+
+function markDirty() {
+  const name = cfg.getActiveFilename();
+  if (!name) return;
+  saveStore.markDirty(name);
+  refreshSlotBar();
+  setStatus(`Editing ${name} (unsaved changes in memory)`);
+}
+
+function setStatus(text) {
+  const bar = document.querySelector('[data-slot="status"]');
+  if (bar) bar.textContent = text;
+}
+
+function refreshEditor() {
+  const mount = requireEl('[data-slot="editor-panel"]');
+  const entry = currentEntry();
+  mount.innerHTML = "";
+  if (!entry) {
+    mount.innerHTML =
+      "<p class='status-bar'>Load a `.rmmzsave` / `.rmmzdata` file to begin editing.</p>";
+    return;
+  }
+
+  const host = document.createElement("div");
+  mount.appendChild(host);
+
+  renderEditorTab(activeTab, {
+    panel: host,
+    saveObj: entry.object,
+    filename: cfg.getActiveFilename(),
+    dbStore,
+    markDirty,
+    notify,
+  });
+}
+
+function refreshSlotBar() {
+  const bar = requireEl('[data-slot="slot-bar"]');
+  bar.innerHTML = "";
+  const summary = saveStore.listSummary();
+  if (!summary.length) {
+    bar.textContent = "No saves loaded yet.";
+    cfg.setActiveFilename("");
+    return;
+  }
+
+  if (!cfg.getActiveFilename()) {
+    cfg.setActiveFilename(summary[0].filename);
+  }
+
+  summary.forEach((item) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "slot-chip";
+    btn.dataset.filename = item.filename;
+    if (item.filename === cfg.getActiveFilename()) btn.setAttribute("aria-current", "true");
+
+    const title = document.createElement("span");
+    title.textContent = item.label;
+
+    if (item.dirty) {
+      const dot = document.createElement("span");
+      dot.className = "dirty-dot";
+      dot.title = "Modified";
+      btn.appendChild(dot);
+    }
+
+    btn.appendChild(title);
+
+    const metaBits = [];
+    const entry = saveStore.get(item.filename);
+    if (entry) {
+      const snap = summarizeDecodedSave(entry.object);
+      if (snap.mapName) metaBits.push(snap.mapName);
+      if (snap.playtime) metaBits.push(snap.playtime);
+    }
+    if (metaBits.length) {
+      const small = document.createElement("small");
+      small.style.color = "var(--text-muted)";
+      small.style.marginLeft = "0.35rem";
+      small.textContent = metaBits.join(" • ");
+      btn.appendChild(small);
+    }
+
+    btn.addEventListener("click", () => {
+      cfg.setActiveFilename(item.filename);
+      refreshSlotBar();
+      refreshEditor();
+    });
+
+    bar.appendChild(btn);
+  });
+}
+
+async function handleIncomingFiles(fileList) {
+  const files = Array.from(fileList ?? []);
+  for (const file of files) {
+    const res = await ingestFile(saveStore, dbStore, file);
+    if (res.errors.length) res.errors.forEach((line) => notify.show("error", line));
+    if (res.warnings.length) res.warnings.forEach((line) => notify.show("warning", line));
+    if (res.kind === "database" && !res.errors.length) {
+      notify.show("info", `Loaded database helper: ${file.name}`);
+    }
+  }
+  refreshSlotBar();
+  refreshEditor();
+  setStatus(`Loaded ${files.length} file(s). Active: ${cfg.getActiveFilename() || "none"}`);
+}
+
+function wireTabs() {
+  const sidebar = requireEl('[data-slot="sidebar"]');
+  sidebar.querySelectorAll("button[data-tab]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      activeTab = String(btn.dataset.tab || "party");
+      sidebar.querySelectorAll("button[data-tab]").forEach((b) => {
+        b.classList.toggle("active", b === btn);
+      });
+      refreshEditor();
+    });
+  });
+
+  const initial = sidebar.querySelector(`button[data-tab="${activeTab}"]`);
+  if (initial instanceof HTMLButtonElement) {
+    sidebar.querySelectorAll("button[data-tab]").forEach((b) =>
+      b.classList.toggle("active", b === initial)
+    );
+  }
+}
+
+function wireActions() {
+  requireEl('[data-action="download-one"]').addEventListener("click", () => {
+    const name = cfg.getActiveFilename();
+    if (!name) return notify.show("warning", "No save selected.");
+    try {
+      exportSingle(saveStore, name);
+      notify.show("info", `Downloaded ${name}`);
+    } catch (e) {
+      notify.show("error", e instanceof Error ? e.message : String(e));
+    }
+  });
+
+  requireEl('[data-action="download-dirty"]').addEventListener("click", () => {
+    if (!saveStore.getDirtyPairs().length) {
+      notify.show("info", "Nothing dirty to download.");
+      return;
+    }
+    exportAllDirty(saveStore);
+    notify.show("info", "Triggered downloads for dirty saves.");
+  });
+
+  requireEl('[data-action="zip-dirty"]').addEventListener("click", async () => {
+    if (!saveStore.getDirtyPairs().length) {
+      notify.show("info", "Nothing dirty to zip.");
+      return;
+    }
+    try {
+      const ctor = globalThis.JSZip;
+      await zipDirtySaves(ctor, saveStore, exportCompressed);
+      notify.show("info", "ZIP download started.");
+    } catch (e) {
+      notify.show("error", e instanceof Error ? e.message : String(e));
+    }
+  });
+
+  requireEl('[data-action="reset-one"]').addEventListener("click", async () => {
+    const name = cfg.getActiveFilename();
+    if (!name) return notify.show("warning", "No save selected.");
+    const ok = await confirmDanger(
+      `Reload ${name} from the original compressed copy in memory?`,
+      "Reset save"
+    );
+    if (!ok) return;
+    saveStore.reset(name);
+    refreshSlotBar();
+    refreshEditor();
+    notify.show("info", `Reverted ${name}`);
+  });
+
+  requireEl('[data-action="clear-saves"]').addEventListener("click", async () => {
+    const ok = await confirmDanger(
+      "Unload every save slot from the editor session?",
+      "Clear saves"
+    );
+    if (!ok) return;
+    saveStore.clearSaves();
+    cfg.setActiveFilename("");
+    refreshSlotBar();
+    refreshEditor();
+    notify.show("info", "Cleared loaded saves.");
+  });
+
+  requireEl('[data-action="clear-db"]').addEventListener("click", () => {
+    dbStore.reset();
+    notify.show("info", "Cleared optional database JSON helpers.");
+    refreshEditor();
+  });
+}
+
+function wireDbPicker() {
+  const input = document.querySelector('[data-slot="db-input"]');
+  if (!(input instanceof HTMLInputElement)) return;
+  input.addEventListener("change", async () => {
+    if (!input.files?.length) return;
+    await handleIncomingFiles(input.files);
+    input.value = "";
+  });
+}
+
+function init() {
+  wireDropZone(handleIncomingFiles);
+  wireDbPicker();
+  wireTabs();
+  wireActions();
+  refreshSlotBar();
+  refreshEditor();
+  setStatus("Ready — drop saves or pick files to begin.");
+}
+
+init();
