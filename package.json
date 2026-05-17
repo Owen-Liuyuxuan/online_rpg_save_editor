@@ -1,0 +1,20 @@
+{
+  "name": "rpg_mz_save_editor",
+  "version": "1.0.0",
+  "description": "Static RPG Maker MZ save editor for GitHub Pages",
+  "type": "module",
+  "private": false,
+  "scripts": {
+    "test": "node --import ./tests/lz-global.mjs --test tests/codec.test.mjs tests/jsonex.test.mjs tests/ingest.test.mjs tests/savefile-parser.test.mjs tests/global-parser.test.mjs tests/database-parser.test.mjs tests/save-store.test.mjs tests/export.test.mjs"
+  },
+  "keywords": [
+    "rpg-maker-mz",
+    "save-editor",
+    "lz-string"
+  ],
+  "license": "ISC",
+  "devDependencies": {
+    "jszip": "^3.10.1",
+    "lz-string": "^1.5.0"
+  }
+}

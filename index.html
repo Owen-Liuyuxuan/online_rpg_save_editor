@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>RPG Maker MZ Save Editor</title>
+    <link rel="stylesheet" href="assets/css/theme.css" />
+    <link rel="stylesheet" href="assets/css/main.css" />
+    <link rel="stylesheet" href="assets/css/layout.css" />
+    <link rel="stylesheet" href="assets/css/table.css" />
+    <link rel="stylesheet" href="assets/css/editor.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div>
+        <h1>RPG Maker MZ Save Editor</h1>
+        <p class="lead">
+          Static, offline-friendly LZString round-trip editor for <code>.rmmzsave</code> /
+          <code>.rmmzdata</code> payloads. Always keep backups.
+        </p>
+      </div>
+    </header>
+
+    <div class="stage">
+      <section class="card" aria-labelledby="upload-title">
+        <h2 id="upload-title">Upload</h2>
+        <div
+          class="drop-zone"
+          data-slot="drop-zone"
+          tabindex="0"
+          role="button"
+          aria-label="Drop save files or click to browse"
+        >
+          <p>
+            <strong>Primary:</strong> drop slot saves (<code>file*.rmmzsave</code>), plus optional
+            <code>global.rmmzsave</code> / <code>config.rmmzsave</code>.
+          </p>
+          <p class="status-bar">
+            Compressed blobs are decoded with the same lz-string Base64 codec that RPG Maker MZ
+            ships in <code>rmmz_managers.js</code>.
+          </p>
+          <input
+            id="upload-saves-input"
+            class="sr-only"
+            type="file"
+            multiple
+            accept=".rmmzsave,.rmmzdata,application/octet-stream"
+          />
+          <noscript>This tool requires JavaScript.</noscript>
+        </div>
+        <div class="toolbar" style="margin-top: 1rem">
+          <label class="btn secondary">
+            Upload <code>data/*.json</code> helpers
+            <input data-slot="db-input" type="file" multiple accept=".json,.txt" hidden />
+          </label>
+          <button class="btn danger" type="button" data-action="clear-saves">
+            Clear loaded saves
+          </button>
+          <button class="btn secondary" type="button" data-action="clear-db">
+            Forget database helpers
+          </button>
+          <span class="spacer"></span>
+          <small class="status-bar">Recommended helpers: Actors.json, Items.json, System.json, MapInfos.json</small>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Loaded slots</h2>
+        <div class="slot-bar" data-slot="slot-bar"></div>
+        <p class="status-bar" data-slot="status"></p>
+      </section>
+    </div>
+
+    <div class="main-grid">
+      <nav class="editor-sidebar" data-slot="sidebar" aria-label="Editor sections">
+        <button type="button" data-tab="party" class="tab-btn">Party</button>
+        <button type="button" data-tab="actors" class="tab-btn">Actors</button>
+        <button type="button" data-tab="switches" class="tab-btn">Switches</button>
+        <button type="button" data-tab="variables" class="tab-btn">Variables</button>
+        <button type="button" data-tab="map" class="tab-btn">Map / Player</button>
+        <button type="button" data-tab="system" class="tab-btn">System</button>
+        <button type="button" data-tab="self" class="tab-btn">Self switches</button>
+        <button type="button" data-tab="raw" class="tab-btn">Raw JSON</button>
+      </nav>
+
+      <div class="stage" style="min-height: 60vh">
+        <div data-slot="editor-panel"></div>
+
+        <div class="card">
+          <div class="toolbar">
+            <button class="btn primary" type="button" data-action="download-one">
+              Download this file
+            </button>
+            <button class="btn secondary" type="button" data-action="download-dirty">
+              Download all dirty
+            </button>
+            <button class="btn secondary" type="button" data-action="zip-dirty">
+              Zip dirty saves
+            </button>
+            <button class="btn secondary" type="button" data-action="reset-one">
+              Reset this file
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div data-slot="toast-region" class="toast-region" aria-live="polite"></div>
+
+    <script src="vendor/lz-string.min.js"></script>
+    <script src="vendor/jszip.min.js"></script>
+    <script type="module" src="src/main.js"></script>
+  </body>
+</html>
